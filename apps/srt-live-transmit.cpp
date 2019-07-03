@@ -447,7 +447,7 @@ int main(int argc, char** argv)
 
     unique_ptr<Source> src;
     bool srcConnected = false;
-    std::list<unique_ptr<Target>> targets;
+    std::vector<unique_ptr<Target>> targets;
     std::vector<bool> targetsConnected;
 
     int pollid = srt_epoll_create();
@@ -458,9 +458,9 @@ int main(int argc, char** argv)
     }
 
     size_t receivedBytes = 0;
-    size_t wroteBytes = 0;
-    size_t lostBytes = 0;
-    size_t lastReportedtLostBytes = 0;
+    std::vector<size_t> wroteBytes;
+    std::vector<size_t> lostBytes;
+    std::vector<size_t> lastReportedtLostBytes;
     std::time_t writeErrorLogTimer(std::time(nullptr));
 
     try {
@@ -548,18 +548,21 @@ int main(int argc, char** argv)
                             break;
                     }
 
-                    wroteBytes = 0;
-                    lostBytes = 0;
-                    lastReportedtLostBytes = 0;
                     if (initialRun)
                     {
                         targets.push_back(std::move(tar));
                         targetsConnected.push_back(false);
+                        wroteBytes.push_back(0);
+                        lostBytes.push_back(0);
+                        lastReportedtLostBytes.push_back(0);
                     }
                     else
                     {
                         *it = std::move(tar);
                         targetsConnected[targetCount] = false;
+                        wroteBytes[targetCount];
+                        lostBytes[targetCount];
+                        lastReportedtLostBytes[targetCount] = 0;
                     }
                 }
                 targetCount++;
@@ -796,34 +799,38 @@ int main(int argc, char** argv)
                 while (!dataqueue.empty())
                 {
                     std::shared_ptr<bytevector> pdata = dataqueue.front();
+                    uint8_t target_idx = 0;
                     for (auto& tar : targets)
                     {
-                        // TODO: How to present these calculations
-                        // when having multiple outputs
                         if (!tar.get() || !tar->IsOpen()) {
-                            lostBytes += (*pdata).size();
+                            lostBytes[target_idx] += (*pdata).size();
                         }
                         else if (!tar->Write(pdata->data(), pdata->size(), out_stats)) {
-                            lostBytes += (*pdata).size();
+                            lostBytes[target_idx] += (*pdata).size();
                         }
                         else
-                            wroteBytes += (*pdata).size();
+                            wroteBytes[target_idx] += (*pdata).size();
+                        target_idx++;
                     }
 
                     dataqueue.pop_front();
                 }
 
-                if (!cfg.quiet && (lastReportedtLostBytes != lostBytes))
+                std::time_t now(std::time(nullptr));
+                if (std::difftime(now, writeErrorLogTimer) >= 5.0)
                 {
-                    std::time_t now(std::time(nullptr));
-                    if (std::difftime(now, writeErrorLogTimer) >= 5.0)
+                    for (uint8_t idx = 0; idx < lostBytes.size(); ++idx)
                     {
-                        cerr << lostBytes << " bytes lost, "
-                            << wroteBytes << " bytes sent, "
-                            << receivedBytes << " bytes received"
-                            << endl;
-                        writeErrorLogTimer = now;
-                        lastReportedtLostBytes = lostBytes;
+                        if (!cfg.quiet && (lastReportedtLostBytes[idx] != lostBytes[idx]))
+                        {
+                                cerr << "Target " << targets[idx]->uri.uri() << " - "
+                                    << lostBytes[idx] << " bytes lost, "
+                                    << wroteBytes[idx] << " bytes sent, "
+                                    << receivedBytes << " bytes received"
+                                    << endl;
+                                writeErrorLogTimer = now;
+                                lastReportedtLostBytes[idx] = lostBytes[idx];
+                        }
                     }
                 }
             }
