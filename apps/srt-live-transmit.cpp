@@ -583,7 +583,6 @@ int main(int argc, char** argv)
                         continue;
 
                     bool issource = false;
-                    bool break_outer_loop = false; // Not used
                     if (src && src->GetSRTSocket() == s)
                     {
                         issource = true;
@@ -751,10 +750,6 @@ int main(int argc, char** argv)
                             // the targets
                             break;
                         }
-                    }
-                    if (break_outer_loop)
-                    {
-                        break;
                     }
                 }
 
